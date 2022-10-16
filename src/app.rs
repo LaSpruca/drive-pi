@@ -42,11 +42,11 @@ impl App {
                     self.screen = Screen::Devices(devices, 0);
                 }
                 // SMB
-                "c" | "3" => {
-                    self.screen = Screen::Error("Samba password not implemented".to_string());
+                "c" | "1" => {
+                    self.screen = Screen::Error("Samba password\nnot implemented".to_string());
                 }
                 // Reboot
-                "d" | "1" => {
+                "d" | "3" => {
                     self.screen = Screen::ConfirmExit;
                 }
                 _ => {}
@@ -239,7 +239,10 @@ where
             if *mounted {
                 Text::with_alignment(
                     "*",
-                    Point { x: 113, y: 40 },
+                    Point {
+                        x: 112,
+                        y: 10 * index as i32 + 30,
+                    },
                     MonoTextStyle::new(&FONT_5X8, BinaryColor::On),
                     Alignment::Center,
                 )

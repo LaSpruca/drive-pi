@@ -8,7 +8,7 @@ use embedded_graphics::{pixelcolor::BinaryColor, prelude::*, Drawable};
 
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 64;
-const SIZE: u32 = 1;
+const SIZE: u32 = 2;
 
 #[cfg(feature = "simulator")]
 fn main() {
