@@ -1,19 +1,28 @@
+use std::{collections::HashMap, fs};
+
 use embedded_graphics::{
     mono_font::{
-        iso_8859_10::FONT_6X10, iso_8859_16::FONT_5X8, iso_8859_7::FONT_7X13_BOLD, MonoTextStyle,
+        iso_8859_10::FONT_6X10, iso_8859_15::FONT_4X6, iso_8859_16::FONT_5X8,
+        iso_8859_7::FONT_7X13_BOLD, MonoTextStyle,
     },
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::*,
     text::{Alignment, Text},
 };
+use sys_mount::{Mount, UnmountDrop};
 
-use crate::device::get_devices;
+use crate::{
+    config::Config,
+    device::{get_devices, Device},
+};
 
 #[derive(Default)]
 pub struct App {
     screen: Screen,
     should_quit: bool,
+    config: Config,
+    mounts: HashMap<String, UnmountDrop<Mount>>,
 }
 
 impl App {
@@ -29,20 +38,11 @@ impl App {
                     self.screen = Screen::Error("WiFi not implemented".to_string());
                 }
                 // Mnt
-                "b" | "9" => {
-                    let devices = match get_devices() {
-                        Ok(val) => val,
-                        Err(ex) => {
-                            eprintln!("{ex:?}");
-                            self.screen = Screen::Error("Could not get devices".to_string());
-                            return;
-                        }
-                    };
-
-                    self.screen = Screen::Devices(devices, 0);
+                "c" | "9" => {
+                    self.devices(None);
                 }
                 // SMB
-                "c" | "1" => {
+                "b" | "1" => {
                     self.screen = Screen::Error("Samba password\nnot implemented".to_string());
                 }
                 // Reboot
@@ -59,8 +59,42 @@ impl App {
                         self.screen = Screen::Devices(devices.clone(), idex - 1)
                     }
                 }
-                "b" | "9" => {}
-                "c" | "1" => {
+                "c" | "9" => {
+                    let dev = &devices[*idex];
+                    if dev.mounted {
+                        match self.mounts.remove(&dev.name) {
+                            Some(mnt) => {
+                                let path = mnt.target_path();
+                                match fs::remove_dir(path) {
+                                    Ok(_) => {}
+                                    Err(ex) => {
+                                        eprintln!("{ex:?}");
+                                        self.screen = Screen::Error(format!(
+                                            "Could not delete directory\n{}",
+                                            path.display()
+                                        ));
+                                    }
+                                };
+                            }
+                            None => {}
+                        }
+
+                        self.devices(None);
+                    } else {
+                        match dev.mount(self.config.mount_path.clone()) {
+                            Ok(mnt) => {
+                                self.mounts.insert(dev.name.clone(), mnt);
+                                self.devices(Some(*idex))
+                            }
+                            Err(ex) => {
+                                eprintln!("{ex:?}");
+                                self.screen =
+                                    Screen::Error(format!("Could not mount {}", dev.name));
+                            }
+                        }
+                    }
+                }
+                "b" | "1" => {
                     if *idex == devices.len() - 1 {
                         self.screen = Screen::Devices(devices.clone(), 0)
                     } else {
@@ -76,10 +110,36 @@ impl App {
             },
             Screen::ConfirmExit => match input {
                 "a" | "7" => self.should_quit = true,
-                "b" | "9" => self.screen = Screen::Home,
+                "c" | "9" => self.screen = Screen::Home,
                 _ => {}
             },
         }
+    }
+
+    pub fn load_config(&mut self) {
+        if let Some(config) = Config::load() {
+            self.config = config;
+        }
+    }
+
+    fn devices(&mut self, index: Option<usize>) {
+        let devices = match get_devices(
+            self.config
+                .mount_path
+                .canonicalize()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        ) {
+            Ok(val) => val,
+            Err(ex) => {
+                eprintln!("{ex:?}");
+                self.screen = Screen::Error("Could not get devices".to_string());
+                return;
+            }
+        };
+
+        self.screen = Screen::Devices(devices, index.unwrap_or(0));
     }
 }
 
@@ -98,7 +158,7 @@ impl<'a> Drawable for App {
 
 enum Screen {
     Home,
-    Devices(Vec<(String, String, bool)>, usize),
+    Devices(Vec<Device>, usize),
     Error(String),
     ConfirmExit,
 }
@@ -114,7 +174,9 @@ impl Screen {
         match self {
             Screen::Home => ["WIFI", "MNT", "SMB", "EXIT"],
             Screen::Devices(drives, index) => {
-                if drives[*index].2 {
+                if drives.is_empty() {
+                    ["", "", "", "BACK"]
+                } else if drives[*index].mounted {
                     ["^", "UMT", "v", "BACK"]
                 } else {
                     ["^", "MNT", "v", "BACK"]
@@ -184,11 +246,7 @@ where
     Ok(())
 }
 
-pub fn devices<D>(
-    display: &mut D,
-    devices: &Vec<(String, String, bool)>,
-    hovered: usize,
-) -> Result<(), D::Error>
+pub fn devices<D>(display: &mut D, devices: &Vec<Device>, hovered: usize) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = BinaryColor>,
 {
@@ -207,14 +265,30 @@ where
         )
         .draw(display)?;
     } else {
-        let top_4: Vec<(String, String, bool)> = devices
+        let top_4: Vec<Device> = devices
             .iter()
             .skip(hovered)
             .take(3)
             .map(|x| x.to_owned())
             .collect();
 
-        for (index, (name, size, mounted)) in top_4.iter().enumerate() {
+        Text::new(
+            ">",
+            Point { x: 1, y: 30 },
+            MonoTextStyle::new(&FONT_4X6, BinaryColor::On),
+        )
+        .draw(display)?;
+
+        for (
+            index,
+            Device {
+                name,
+                size,
+                mounted,
+                ..
+            },
+        ) in top_4.iter().enumerate()
+        {
             Text::new(
                 name,
                 Point {

@@ -1,4 +1,5 @@
 mod app;
+mod config;
 mod device;
 #[cfg(feature = "simulator")]
 mod simulator;
@@ -8,7 +9,7 @@ use embedded_graphics::{pixelcolor::BinaryColor, prelude::*, Drawable};
 
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 64;
-const SIZE: u32 = 2;
+const SIZE: u32 = 15;
 
 #[cfg(feature = "simulator")]
 fn main() {
@@ -28,6 +29,7 @@ fn main() {
     window.set_lazy(true);
 
     let mut app = App::default();
+    app.load_config();
 
     while let Some(e) = window.next() {
         match &e {

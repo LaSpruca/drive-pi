@@ -1,2 +1,3 @@
 /target
 build-and-upload.sh
+config.toml
