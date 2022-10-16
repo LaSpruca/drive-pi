@@ -1,34 +1,55 @@
-use std::error::Error;
-use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyle},
-     pixelcolor::BinaryColor,
-    prelude::*,
-    text::Text,
-};
-use linux_embedded_hal::I2cdev;
-use ssd1306::{
-    prelude::*, rotation::DisplayRotation, size::DisplaySize128x64, I2CDisplayInterface, Ssd1306,
-};
+mod app;
+mod device;
+#[cfg(feature = "simulator")]
+mod simulator;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let mut i2c = I2cdev::new("/dev/i2c-1")?;
+use app::App;
+use embedded_graphics::{pixelcolor::BinaryColor, prelude::*, Drawable};
 
-    i2c.set_slave_address(0x3c)?;
+const WIDTH: u32 = 128;
+const HEIGHT: u32 = 64;
+const SIZE: u32 = 1;
 
-    let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
-        .into_buffered_graphics_mode();
+#[cfg(feature = "simulator")]
+fn main() {
+    use piston_window::{EventLoop, PistonWindow, Window, WindowSettings};
+    use simulator::ScreenSimulator;
 
-    display.init().unwrap();
+    let mut window: PistonWindow =
+        WindowSettings::new("EG Simulator", [WIDTH * SIZE, HEIGHT * SIZE])
+            .exit_on_esc(true)
+            .resizable(false)
+            //.opengl(OpenGL::V2_1) // Set a different OpenGl version
+            .build()
+            .unwrap();
 
-    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    let mut display = ScreenSimulator::new();
 
+    window.set_lazy(true);
 
-    let im = Text::new("Hello world", Point { x: 0, y: 0 }, style);
+    let mut app = App::default();
 
-    im.draw(&mut display).unwrap();
+    while let Some(e) = window.next() {
+        match &e {
+            piston_window::Event::Input(i, _) => match i {
+                piston_window::Input::Text(x) => {if x == "q" {window.set_should_close(true);} else {app.handle_input(x);}},
+                _ => {}
+            },
+            _ => {}
+            // piston_window::Event::Loop(_) => todo!(),
+            // piston_window::Event::Custom(_, _, _) => todo!(),
+        }
 
-    display.flush().unwrap();
+        display.clear(BinaryColor::Off).unwrap();
 
-    loop {}
+        app.draw(&mut display).unwrap();
+
+        window.draw_2d(&e, |c, g, _| {
+            display.draw(c, g);
+        });
+
+        if app.should_exit() {
+            window.set_should_close(true)
+        }
+    }
 }

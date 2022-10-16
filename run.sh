@@ -1,3 +1,5 @@
-cargo build --target armv7-unknown-linux-gnueabihf
-scp target/armv7-unknown-linux-gnueabi/debug/drive-pi root@192.168.1.196:/app/drive-pi
-ssh root@192.168.1.196 'chmod +x /app/drive-pi | chown root /app/drive-pi | /app/drive-pi'
+#!/bin/sh
+ssh root@192.168.1.196 'pkill drive-pi ; rm -rf /app/src ; mkdir /app/Cargo.toml'
+scp Cargo.toml root@192.168.1.196:/app/Cargo.toml
+scp -r src root@192.168.1.196:/app/src
+ssh root@192.168.1.196 'cd /app ; cargo run'
