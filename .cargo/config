@@ -1,0 +1,2 @@
+[target.armv7-unknown-linux-gnueabihf]
+linker = "/home/laspruca/.local/share/armv7-eabihf--glibc--stable-2022.08-1/bin/arm-buildroot-linux-gnueabihf-gcc-11.3.0"
