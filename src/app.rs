@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs};
+use std::fs;
 
 use embedded_graphics::{
     mono_font::{
@@ -10,7 +10,6 @@ use embedded_graphics::{
     primitives::*,
     text::{Alignment, Text},
 };
-use sys_mount::{Mount, UnmountDrop};
 
 use crate::{
     config::Config,
@@ -22,7 +21,6 @@ pub struct App {
     screen: Screen,
     should_quit: bool,
     config: Config,
-    mounts: HashMap<String, UnmountDrop<Mount>>,
 }
 
 impl App {
@@ -62,30 +60,24 @@ impl App {
                 "c" | "9" => {
                     let dev = &devices[*idex];
                     if dev.mounted {
-                        match self.mounts.remove(&dev.name) {
-                            Some(mnt) => {
-                                let path = mnt.target_path();
-                                match fs::remove_dir(path) {
-                                    Ok(_) => {}
-                                    Err(ex) => {
-                                        eprintln!("{ex:?}");
-                                        self.screen = Screen::Error(format!(
-                                            "Could not delete directory\n{}",
-                                            path.display()
-                                        ));
-                                    }
+                        match dev.unmount() {
+                            Ok(_) => {
+                                match fs::remove_dir(&dev.path) {
+                                    _ => {}
                                 };
+                                self.devices(Some(*idex));
                             }
-                            None => {}
+                            Err(ex) => {
+                                eprintln!("Could not unmount {ex:?}");
+                                self.screen =
+                                    Screen::Error(format!("Could not unmount {}", dev.name));
+                            }
                         }
 
                         self.devices(None);
                     } else {
-                        match dev.mount(self.config.mount_path.clone()) {
-                            Ok(mnt) => {
-                                self.mounts.insert(dev.name.clone(), mnt);
-                                self.devices(Some(*idex))
-                            }
+                        match dev.mount() {
+                            Ok(_) => self.devices(Some(*idex)),
                             Err(ex) => {
                                 eprintln!("{ex:?}");
                                 self.screen =
@@ -123,14 +115,7 @@ impl App {
     }
 
     fn devices(&mut self, index: Option<usize>) {
-        let devices = match get_devices(
-            self.config
-                .mount_path
-                .canonicalize()
-                .unwrap()
-                .to_str()
-                .unwrap(),
-        ) {
+        let devices = match get_devices(&self.config.mount_path) {
             Ok(val) => val,
             Err(ex) => {
                 eprintln!("{ex:?}");
