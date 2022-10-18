@@ -1,5 +1,5 @@
 #!/bin/sh
-ssh root@192.168.1.196 'pkill drive-pi ; rm -rf /app/src ; mkdir /app/Cargo.toml'
-scp Cargo.toml root@192.168.1.196:/app/Cargo.toml
-scp -r src root@192.168.1.196:/app/src
-ssh root@192.168.1.196 'cd /app ; cargo run'
+ssh root@$PIIP 'pkill drive-pi ; rm -rf /app/src ; rm /app/Cargo.toml'
+scp Cargo.toml root@$PIIP:/app/Cargo.toml
+scp -r src root@$PIIP:/app/src
+ssh root@$PIIP 'cd /app ; cargo run'

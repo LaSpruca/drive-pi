@@ -4,17 +4,104 @@ mod device;
 #[cfg(feature = "simulator")]
 mod simulator;
 
-use std::fs;
-
 use app::App;
-use config::Config;
-use device::get_devices;
-use embedded_graphics::{pixelcolor::BinaryColor, prelude::*, Drawable};
-use walkdir::WalkDir;
 
+#[cfg(feature = "simulator")]
 const WIDTH: u32 = 128;
+#[cfg(feature = "simulator")]
 const HEIGHT: u32 = 64;
+#[cfg(feature = "simulator")]
 const SIZE: u32 = 1;
+
+#[cfg(feature = "pi")]
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use embedded_graphics::prelude::*;
+    use futures::stream::StreamExt;
+    use gpio_cdev::{Chip, EventRequestFlags, LineRequestFlags};
+    use linux_embedded_hal::I2cdev;
+    use ssd1306::{
+        prelude::*, rotation::DisplayRotation, size::DisplaySize128x64, I2CDisplayInterface,
+        Ssd1306,
+    };
+
+    let mut i2c = I2cdev::new("/dev/i2c-1")?;
+
+    i2c.set_slave_address(0x3C)?;
+
+    let interface = I2CDisplayInterface::new(i2c);
+    let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
+        .into_buffered_graphics_mode();
+
+    display.init().unwrap();
+    display.set_display_on(true).unwrap();
+    display.set_brightness(Brightness::BRIGHTEST).unwrap();
+
+    let mut chip = Chip::new("/dev/gpiochip0").unwrap();
+
+    let mut a_events = chip.get_line(4)?.async_events(
+        LineRequestFlags::INPUT,
+        EventRequestFlags::RISING_EDGE,
+        "drive-pi",
+    )?;
+
+    let mut b_events = chip.get_line(14)?.async_events(
+        LineRequestFlags::INPUT,
+        EventRequestFlags::RISING_EDGE,
+        "drive-pi",
+    )?;
+
+    let mut c_events = chip.get_line(15)?.async_events(
+        LineRequestFlags::INPUT,
+        EventRequestFlags::RISING_EDGE,
+        "drive-pi",
+    )?;
+
+    let mut d_events = chip.get_line(18)?.async_events(
+        LineRequestFlags::INPUT,
+        EventRequestFlags::RISING_EDGE,
+        "drive-pi",
+    )?;
+
+    let mut app = App::default();
+
+    app.load_config();
+
+    app.draw(&mut display).unwrap();
+
+    display.flush().unwrap();
+
+    loop {
+        tokio::select! {
+            Some(Ok(_)) = a_events.next() => {
+                app.handle_input("a");
+                println!("a");
+            }
+            Some(Ok(_)) = b_events.next() => {
+                app.handle_input("b");
+                println!("b");
+            }
+            Some(Ok(_)) = c_events.next() => {
+                app.handle_input("c");
+                println!("c");
+            }
+            Some(Ok(_)) = d_events.next() => {
+                app.handle_input("d");
+                println!("d");
+            }
+        };
+
+        if app.should_exit() {
+            break;
+        }
+
+        display.clear();
+        app.draw(&mut display).unwrap();
+        display.flush().unwrap();
+    }
+
+    Ok(())
+}
 
 #[cfg(feature = "simulator")]
 fn main() {
@@ -57,40 +144,6 @@ fn main() {
 
         if app.should_exit() {
             window.set_should_close(true)
-        }
-    }
-
-    clean_up();
-}
-
-fn clean_up() {
-    let config = Config::load().unwrap_or(Config::default());
-    match get_devices(&config.mount_path) {
-        Ok(devices) => {
-            for device in devices {
-                if device.mounted {
-                    match device.unmount() {
-                        Ok(_) => {}
-                        Err(ex) => {
-                            eprintln!("{ex}")
-                        }
-                    };
-                }
-            }
-        }
-        Err(_) => {}
-    };
-
-    let subpaths = WalkDir::new(&config.mount_path);
-
-    for sub in subpaths.into_iter().filter_map(|z| z.ok()) {
-        if sub.path().is_dir() && sub.path() == config.mount_path {
-            match fs::remove_dir(sub.path()) {
-                Ok(_) => {}
-                Err(ex) => {
-                    eprintln!("Could not delete director {} {}", sub.path().display(), ex)
-                }
-            };
         }
     }
 }

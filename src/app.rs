@@ -10,6 +10,7 @@ use embedded_graphics::{
     primitives::*,
     text::{Alignment, Text},
 };
+use walkdir::WalkDir;
 
 use crate::{
     config::Config,
@@ -125,6 +126,39 @@ impl App {
         };
 
         self.screen = Screen::Devices(devices, index.unwrap_or(0));
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        match get_devices(&self.config.mount_path) {
+            Ok(devices) => {
+                for device in devices {
+                    if device.mounted {
+                        match device.unmount() {
+                            Ok(_) => {}
+                            Err(ex) => {
+                                eprintln!("{ex}")
+                            }
+                        };
+                    }
+                }
+            }
+            Err(_) => {}
+        };
+
+        let subpaths = WalkDir::new(&self.config.mount_path);
+
+        for sub in subpaths.into_iter().filter_map(|z| z.ok()) {
+            if sub.path().is_dir() && sub.path() == self.config.mount_path {
+                match fs::remove_dir(sub.path()) {
+                    Ok(_) => {}
+                    Err(ex) => {
+                        eprintln!("Could not delete director {} {}", sub.path().display(), ex)
+                    }
+                };
+            }
+        }
     }
 }
 

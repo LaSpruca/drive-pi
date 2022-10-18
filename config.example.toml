@@ -1,0 +1,9 @@
+mount_path = "/mnt"
+
+[smb]
+username = "pi"
+password = "youpassword"
+
+[wifi]
+SSID = "DietPi Hotspot"
+PASS = "dietpihotspot"
